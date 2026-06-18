@@ -1,86 +1,59 @@
 rules_version = '2';
-service cloud_firestore {
+service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Global default-deny safety net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    match /users/{userId} {
-      allow get: if isSignedIn() && isOwner(userId);
-      allow create: if isSignedIn() && isOwner(userId) && isValidUser(userId, incoming()) && isLinkedVoucherValid(incoming().voucher);
-      allow update, delete: if false;
-    }
-
-    match /promo_vouchers/{voucherCode} {
-      allow get: if isSignedIn() && (existing().used == false || existing().usedBy == request.auth.token.email);
-      allow list: if false; // Block query harvesting
-      allow create: if isSignedIn() && isValidNewVoucher(incoming()); // Permit any signed-in user to seed vouchers for testing
-      allow update: if isSignedIn() && isValidRedemption(voucherCode, incoming(), existing());
-      allow delete: if false;
-    }
-
-    // --- REUSABLE SECURITY PRIMITIVES ---
-
+    // Helper functions
     function isSignedIn() {
-      return request.auth != null && request.auth.uid != null;
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == "lycelclanaja@gmail.com";
     }
 
     function isOwner(userId) {
-      return request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    function incoming() {
-      return request.resource.data;
+    // Global default catch-all: deny all unless explicitly permitted
+    match /{document=**} {
+      allow read, write: if isAdmin();
     }
 
-    function existing() {
-      return resource.data;
+    // --- USERS SECTION ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) 
+                    && request.resource.data.uid == userId
+                    && request.resource.data.email == request.auth.token.email
+                    && request.resource.data.voucher != null
+                    && request.resource.data.createdAt == request.time;
+      allow update: if isOwner(userId)
+                    && request.resource.data.uid == userId
+                    && request.resource.data.email == request.auth.token.email
+                    && request.resource.data.voucher != null;
+      allow delete: if isAdmin();
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function isValidUser(userId, data) {
-      return data.keys().hasAll(['uid', 'email', 'voucher', 'createdAt'])
-        && data.keys().size() == 4
-        && data.uid == userId
-        && data.email == request.auth.token.email
-        && data.voucher is string
-        && data.voucher.size() <= 50
-        && data.createdAt == request.time;
-    }
-
-    // Validates that the voucher code actually exists and was atomically set to used in standard same-batch write
-    function isLinkedVoucherValid(voucherCode) {
-      return getAfter(/databases/$(database)/documents/promo_vouchers/$(voucherCode)).data.used == true
-        && getAfter(/databases/$(database)/documents/promo_vouchers/$(voucherCode)).data.usedBy == request.auth.token.email;
-    }
-
-    // Validates new voucher shape during seeding
-    function isValidNewVoucher(data) {
-      return data.keys().hasAll(['code', 'duration', 'used', 'usedBy', 'usedAt'])
-        && data.keys().size() == 5
-        && data.code is string
-        && data.code.size() <= 50
-        && data.duration is string
-        && data.used == false
-        && data.usedBy == ""
-        && data.usedAt == null;
-    }
-
-    // Validates that the voucher is transitioning from used = false to used = true, assigned to the authenticated user,
-    // and that the matching user document is atomically created in the same transaction.
-    function isValidRedemption(voucherCode, data, current) {
-      return current.used == false
-        && data.used == true
-        && data.usedBy == request.auth.token.email
-        && data.usedAt == request.time
-        && data.code == current.code
-        && data.duration == current.duration
-        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.voucher == voucherCode;
+    // --- PROMO VOUCHERS SECTION ---
+    match /promo_vouchers/{voucherCode} {
+      allow get: if true;
+      allow list: if isSignedIn() && (
+        resource.data.used == false || 
+        resource.data.usedBy == request.auth.token.email || 
+        isAdmin()
+      );
+      allow create: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn() 
+        && resource.data.used == false
+        && request.resource.data.used == true
+        && request.resource.data.usedBy == request.auth.token.email
+        && request.resource.data.usedAt == request.time
+        && request.resource.data.code == resource.data.code
+        && request.resource.data.duration == resource.data.duration
+      );
+      allow delete: if isAdmin();
     }
   }
 }

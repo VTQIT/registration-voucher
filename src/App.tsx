@@ -201,8 +201,6 @@ export default function App() {
       showNotification("Failed to synchronize with promo database.", "error");
       setView("dashboard");
     }
-    // Refresh admin overview
-    fetchAdminVouchers();
   };
 
   // Fetch administrator voucher table
@@ -257,7 +255,6 @@ export default function App() {
       setVoucherHistory(history);
 
       showNotification(`Claimed additional voucher successfully! New Code: ${newVoucherCode}`, "success");
-      fetchAdminVouchers(); // Sync with admin console
     } catch (err: any) {
       console.error(err);
       if (err.message && err.message.includes("NO_VOUCHERS_AVAILABLE")) {
