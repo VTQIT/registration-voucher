@@ -11,6 +11,7 @@ import {
   serverTimestamp,
   deleteDoc,
   orderBy,
+  setDoc,
 } from "firebase/firestore";
 import { db, handleFirestoreError, OperationType } from "./firebase";
 import { AppUser, PromoVoucher } from "./types";
@@ -327,3 +328,34 @@ export async function getAllVouchersForAdmin(): Promise<PromoVoucher[]> {
     handleFirestoreError(error, OperationType.LIST, path);
   }
 }
+
+/**
+ * Manually add a pre-made WiFi voucher code to Firestore.
+ */
+export async function addPromoVoucher(code: string, duration: string): Promise<void> {
+  const cleanCode = code.trim().toUpperCase();
+  if (!cleanCode) {
+    throw new Error("Voucher code cannot be empty");
+  }
+  const path = `${VOUCHERS_COLL}/${cleanCode}`;
+  try {
+    const docRef = doc(db, VOUCHERS_COLL, cleanCode);
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      throw new Error("VOUCHER_ALREADY_EXISTS");
+    }
+    await setDoc(docRef, {
+      code: cleanCode,
+      duration: duration.trim() || "12 Hours",
+      used: false,
+      usedBy: "",
+      usedAt: null,
+    });
+  } catch (error: any) {
+    if (error.message === "VOUCHER_ALREADY_EXISTS") {
+      throw error;
+    }
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+

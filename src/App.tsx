@@ -46,6 +46,7 @@ import {
   getAllVouchersForAdmin,
   getUserVouchersHistory,
   claimAdditionalWiFiVoucher,
+  addPromoVoucher,
 } from "./firebaseService";
 import { AppUser, PromoVoucher, ViewState } from "./types";
 
@@ -70,6 +71,11 @@ export default function App() {
   const [adminVouchers, setAdminVouchers] = useState<PromoVoucher[]>([]);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [isSandboxOperating, setIsSandboxOperating] = useState(false);
+  const [adminAuthorized, setAdminAuthorized] = useState(() => sessionStorage.getItem("lycel_admin_auth") === "true");
+  const [adminPinInput, setAdminPinInput] = useState("");
+  const [newVoucherCode, setNewVoucherCode] = useState("");
+  const [newVoucherDuration, setNewVoucherDuration] = useState("12 Hours");
+
 
   // Voucher Copy State
   const [isCopied, setIsCopied] = useState(false);
@@ -472,6 +478,58 @@ export default function App() {
       setIsSandboxOperating(false);
     }
   };
+
+  const handleAdminPinSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    if (adminPinInput.trim() === "833981") {
+      sessionStorage.setItem("lycel_admin_auth", "true");
+      setAdminAuthorized(true);
+      setAdminPinInput("");
+      showNotification("CMS Admin Access Granted!", "success");
+      fetchAdminVouchers();
+    } else {
+      showNotification("Incorrect PIN code! Access denied.", "error");
+      setAdminPinInput("");
+    }
+  };
+
+  const handleAdminLock = () => {
+    sessionStorage.removeItem("lycel_admin_auth");
+    setAdminAuthorized(false);
+    showNotification("CMS Admin panel locked.", "info");
+  };
+
+  const handleManualAddVoucher = async (e: FormEvent) => {
+    e.preventDefault();
+    const cleanCode = newVoucherCode.trim().toUpperCase();
+    if (!cleanCode) {
+      showNotification("Please enter a valid voucher code.", "error");
+      return;
+    }
+    if (!/^[A-Z0-9_-]{3,20}$/.test(cleanCode)) {
+      showNotification("Code must be 3-20 alphanumeric characters, dashes, or underscores.", "error");
+      return;
+    }
+
+    setIsSandboxOperating(true);
+    showNotification(`Adding WiFi voucher "${cleanCode}"...`, "info");
+    try {
+      await addPromoVoucher(cleanCode, newVoucherDuration);
+      setNewVoucherCode("");
+      await fetchAdminVouchers();
+      showNotification(`WiFi Voucher "${cleanCode}" successfully added!`, "success");
+    } catch (err: any) {
+      if (err.message === "VOUCHER_ALREADY_EXISTS") {
+        showNotification(`Voucher with code "${cleanCode}" already exists!`, "error");
+      } else {
+        console.error(err);
+        showNotification("Failed to add voucher. Access forbidden or rules blocked.", "error");
+      }
+    } finally {
+      setIsSandboxOperating(false);
+    }
+  };
+
 
   // Helper to format timestamp securely
   const formatTimestamp = (ts: any) => {
@@ -1412,7 +1470,6 @@ export default function App() {
               </AnimatePresence>
             </motion.div>
           )}
-
         </div>
       </main>
 
@@ -1422,7 +1479,7 @@ export default function App() {
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-600 flex items-center gap-1.5">
               <Database className="w-3.5 h-3.5 text-blue-600" />
-              Sandbox Admin Utility
+              WiFi CMS Admin Portal
             </span>
             <button
               onClick={() => setAdminPanelOpen(!adminPanelOpen)}
@@ -1430,7 +1487,7 @@ export default function App() {
               id="btn_toggle_sandbox_panel"
             >
               <Layers className="w-3 h-3" />
-              {adminPanelOpen ? "Close Admin Panel" : "Open Admin Panel"}
+              {adminPanelOpen ? "Close Admin CMS" : "Open Admin CMS"}
             </button>
           </div>
 
@@ -1444,90 +1501,214 @@ export default function App() {
                 className="overflow-hidden space-y-4 pt-1"
                 id="sandbox_panel_inner"
               >
-                <div className="p-3 rounded-2xl bg-orange-500/10 border border-orange-500/20 text-orange-850 text-[11px] leading-relaxed space-y-1">
-                  <div className="flex items-center gap-1 font-bold text-orange-900">
-                    <span className="w-1.5 h-1.5 rounded-full bg-orange-600 animate-pulse" />
-                    Authentication Note:
-                  </div>
-                  <p>
-                    Please ensure the <strong>Email/Password</strong> provider is enabled in your Firebase Auth tab on the console: <strong>{auth.app.options.projectId}</strong>.
-                  </p>
-                </div>
+                {!adminAuthorized ? (
+                  /* Form for entering the PIN */
+                  <form onSubmit={handleAdminPinSubmit} className="space-y-3 p-1" id="admin_pin_form">
+                    <div className="text-center space-y-1">
+                      <h4 className="text-xs font-bold text-slate-700 flex items-center justify-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-blue-600" />
+                        Administrator Security Check
+                      </h4>
+                      <p className="text-[10px] text-slate-500 leading-relaxed">
+                        To access the WiFi CMS Administrative Console, please provide your Admin Access PIN.
+                      </p>
+                    </div>
 
-                <div className="space-y-2">
-                  <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-slate-500" />
-                    Voucher Status (Real-time Firestore check):
-                  </h4>
+                    <div className="flex flex-col items-center gap-2">
+                      <input
+                        type="password"
+                        maxLength={6}
+                        value={adminPinInput}
+                        onChange={(e) => setAdminPinInput(e.target.value.replace(/\D/g, ""))}
+                        placeholder="••••••"
+                        className="w-28 text-center tracking-widest font-mono text-sm py-1.5 rounded-xl border border-slate-300 bg-white/60 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-semibold"
+                        required
+                        id="admin_pin_input"
+                      />
+                      <button
+                        type="submit"
+                        className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl cursor-pointer transition shadow hover:shadow-md active:scale-95 flex items-center justify-center gap-1.5"
+                        id="btn_submit_admin_pin"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        Unlock Administrative CMS
+                      </button>
+                    </div>
+                    <p className="text-[9px] text-center text-slate-400 font-mono">
+                      Hint: PIN is <strong className="text-blue-600 font-bold decoration-dotted border-b border-blue-500/30">833981</strong>
+                    </p>
+                  </form>
+                ) : (
+                  /* Full CMS Admin Board Once Authorized */
+                  <div className="space-y-4 text-slate-800" id="cms_dashboard_content">
+                    {/* Admin Status Info with lock button */}
+                    <div className="flex items-center justify-between p-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-850 text-[10px]">
+                      <div className="flex items-center gap-1.5 font-bold text-emerald-900">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
+                        Lycel CMS Enabled (Admin)
+                      </div>
+                      <button
+                        onClick={handleAdminLock}
+                        className="px-2 py-0.5 rounded-md bg-white hover:bg-slate-50 border border-emerald-500/20 text-[9px] font-bold text-rose-605 hover:text-rose-700 cursor-pointer transition active:scale-95"
+                        id="btn_lock_admin_cms"
+                      >
+                        Lock Console
+                      </button>
+                    </div>
 
-                  {/* Seed Voucher Table widget */}
-                  <div className="rounded-2xl border border-white/50 bg-white/30 overflow-hidden text-xs max-h-[160px] overflow-y-auto shadow-inner-sm">
-                    <table className="w-full text-left font-mono border-collapse">
-                      <thead>
-                        <tr className="bg-white/50 text-slate-605 border-b border-white/35">
-                          <th className="p-2 py-1.5 font-bold text-[10px] uppercase">Voucher Code</th>
-                          <th className="p-2 py-1.5 font-bold text-[10px] uppercase">Status</th>
-                          <th className="p-2 py-1.5 font-bold text-[10px] uppercase">Claimed By</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/20 text-slate-705">
-                        {adminVouchers.length > 0 ? (
-                          adminVouchers.map((voucher) => (
-                            <tr key={voucher.code} className="hover:bg-white/20">
-                              <td className="p-2 py-1.5 font-bold text-slate-850">{voucher.code}</td>
-                              <td className="p-2 py-1.5">
-                                {voucher.used ? (
-                                  <span className="px-1.5 py-0.5 rounded-lg text-[9px] uppercase font-bold bg-amber-500/10 border border-amber-500/20 text-amber-700">
-                                    Claimed
-                                  </span>
-                                ) : (
-                                  <span className="px-1.5 py-0.5 rounded-lg text-[9px] uppercase font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 animate-pulse">
-                                    Available
-                                  </span>
-                                )}
-                              </td>
-                              <td className="p-2 py-1.5 text-slate-500 truncate max-w-[120px]" title={voucher.usedBy || "N/A"}>
-                                {voucher.usedBy ? voucher.usedBy : "-"}
-                              </td>
+                    {/* Manual Voucher Addition Section */}
+                    <div className="p-3.5 rounded-2xl border border-white/50 bg-white/40 space-y-2.5 shadow-sm">
+                      <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <PlusCircle className="w-4 h-4 text-emerald-600" />
+                        Add WiFi Voucher
+                      </h4>
+                      
+                      <form onSubmit={handleManualAddVoucher} className="space-y-2">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Voucher Code</label>
+                            <input
+                              type="text"
+                              value={newVoucherCode}
+                              onChange={(e) => setNewVoucherCode(e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ""))}
+                              placeholder="e.g. VIP889"
+                              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 font-mono text-[11px] bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all font-bold placeholder:text-slate-400 placeholder:font-sans uppercase"
+                              maxLength={20}
+                              required
+                              id="manual_voucher_code_input"
+                            />
+                          </div>
+                          
+                          <div>
+                            <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Access Duration</label>
+                            <select
+                              value={newVoucherDuration}
+                              onChange={(e) => setNewVoucherDuration(e.target.value)}
+                              className="w-full px-2 py-1.5 rounded-xl border border-slate-300 font-mono text-[11px] bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all cursor-pointer font-semibold animate-none"
+                              id="manual_voucher_duration_select"
+                            >
+                              <option value="12 Hours">12 Hours (Default)</option>
+                              <option value="24 Hours">24 Hours</option>
+                              <option value="48 Hours">48 Hours</option>
+                              <option value="1 Hour">1 Hour</option>
+                              <option value="2 Hours">2 Hours</option>
+                              <option value="7 Days">7 Days</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Quick presets helper */}
+                        <div className="flex items-center gap-1.5 pt-0.5">
+                          <span className="text-[8px] text-slate-500 uppercase font-bold">Presets:</span>
+                          {["12 Hours", "24 Hours", "48 Hours"].map((dur) => (
+                            <button
+                              key={dur}
+                              type="button"
+                              onClick={() => setNewVoucherDuration(dur)}
+                              className={`px-1.5 py-0.5 rounded-md text-[8px] font-bold transition border cursor-pointer ${
+                                newVoucherDuration === dur
+                                  ? "bg-emerald-600 text-white border-emerald-700"
+                                  : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              {dur}
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          type="submit"
+                          disabled={isSandboxOperating}
+                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl cursor-pointer transition shadow hover:shadow-md active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-55"
+                          id="btn_submit_add_manual_voucher"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          {isSandboxOperating ? "Adding Voucher..." : "Add Voucher to Pool"}
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Real-time Voucher Registry table */}
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold text-slate-700 flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-slate-500" />
+                        WiFi Voucher Registry ({adminVouchers.length} Total)
+                      </h4>
+
+                      <div className="rounded-2xl border border-white/50 bg-white/30 overflow-hidden text-xs max-h-[160px] overflow-y-auto shadow-inner-sm">
+                        <table className="w-full text-left font-mono border-collapse">
+                          <thead>
+                            <tr className="bg-white/50 text-slate-605 border-b border-white/35">
+                              <th className="p-2 py-1.5 font-bold text-[10px] uppercase">Voucher Code</th>
+                              <th className="p-2 py-1.5 font-bold text-[10px] uppercase">Duration</th>
+                              <th className="p-2 py-1.5 font-bold text-[10px] uppercase">Status</th>
+                              <th className="p-2 py-1.5 font-bold text-[10px] uppercase">Claimed By</th>
                             </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td colSpan={3} className="p-3 text-center text-slate-400 italic">
-                              No promo credentials seeded yet in Firestore.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
-                    </table>
+                          </thead>
+                          <tbody className="divide-y divide-white/20 text-slate-755">
+                            {adminVouchers.length > 0 ? (
+                              adminVouchers.map((voucher) => (
+                                <tr key={voucher.code} className="hover:bg-white/20">
+                                  <td className="p-2 py-1.5 font-bold text-slate-850">{voucher.code}</td>
+                                  <td className="p-2 py-1.5 text-slate-600 text-[10px]">{voucher.duration}</td>
+                                  <td className="p-2 py-1.5">
+                                    {voucher.used ? (
+                                      <span className="px-1.5 py-0.5 rounded-lg text-[9px] uppercase font-bold bg-amber-500/10 border border-amber-500/20 text-amber-700">
+                                        Claimed
+                                      </span>
+                                    ) : (
+                                      <span className="px-1.5 py-0.5 rounded-lg text-[9px] uppercase font-bold bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 animate-pulse">
+                                        Available
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-2 py-1.5 text-slate-500 truncate max-w-[120px]" title={voucher.usedBy || "N/A"}>
+                                    {voucher.usedBy ? voucher.usedBy : "-"}
+                                  </td>
+                                </tr>
+                              ))
+                            ) : (
+                              <tr>
+                                <td colSpan={4} className="p-3 text-center text-slate-400 italic">
+                                  No vouchers exist in Firestore. Create one above!
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Developer Sandbox Options */}
+                    <div className="pt-2 border-t border-slate-200/55 space-y-2">
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block">Debug Actions & Overrides</span>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          onClick={handleSeedDatabase}
+                          disabled={isSandboxOperating}
+                          className="py-2.5 px-3 rounded-2xl border border-indigo-200 hover:border-indigo-400 bg-white/40 hover:bg-white/70 text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-sm active:scale-95"
+                          id="btn_seed_database"
+                        >
+                          <CheckCircle className="w-3.5 h-3.5" />
+                          Seed FREE001-FREE005
+                        </button>
+
+                        <button
+                          onClick={handleResetDatabase}
+                          disabled={isSandboxOperating}
+                          className="py-2.5 px-3 rounded-2xl border border-rose-200 hover:border-rose-400 bg-white/40 hover:bg-white/70 text-rose-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-sm active:scale-95"
+                          id="btn_reset_database"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isSandboxOperating ? "animate-spin" : ""}`} />
+                          Wipe & Clear DB
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-center text-slate-500 font-mono">
+                        Database Env: {auth.app.options.projectId} (web)
+                      </p>
+                    </div>
                   </div>
-                </div>
-
-                {/* Configuration Action Keys */}
-                <div className="grid grid-cols-2 gap-3 pt-2">
-                  <button
-                    onClick={handleSeedDatabase}
-                    disabled={isSandboxOperating}
-                    className="py-2.5 px-3 rounded-2xl border border-indigo-200 hover:border-indigo-400 bg-white/40 hover:bg-white/70 text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-sm active:scale-95"
-                    id="btn_seed_database"
-                  >
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    Seed FREE001-FREE005
-                  </button>
-
-                  <button
-                    onClick={handleResetDatabase}
-                    disabled={isSandboxOperating}
-                    className="py-2.5 px-3 rounded-2xl border border-rose-200 hover:border-rose-400 bg-white/40 hover:bg-white/70 text-rose-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-sm active:scale-95"
-                    id="btn_reset_database"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isSandboxOperating ? "animate-spin" : ""}`} />
-                    Wipe & Clear DB
-                  </button>
-                </div>
-                <p className="text-[10px] text-center text-slate-500 font-mono">
-                  Database Env: {auth.app.options.projectId} (web)
-                </p>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
