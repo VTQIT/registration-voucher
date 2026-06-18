@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User profile document containing assigned voucher code.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Unique Firebase Authentication UID."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User's unique email address."
+        },
+        "voucher": {
+          "type": "string",
+          "description": "Assigned promo WiFi voucher code."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Redemption or account registration timestamp."
+        }
+      },
+      "required": ["uid", "email", "voucher", "createdAt"]
+    },
+    "PromoVoucher": {
+      "title": "Promo Voucher",
+      "description": "Pre-made promo WiFi voucher details.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "description": "Unique voucher string."
+        },
+        "duration": {
+          "type": "string",
+          "description": "Duration the voucher code is valid for."
+        },
+        "used": {
+          "type": "boolean",
+          "description": "Indicates if the voucher has been assigned."
+        },
+        "usedBy": {
+          "type": "string",
+          "description": "Assigned user's email address."
+        },
+        "usedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when this voucher was assigned."
+        }
+      },
+      "required": ["code", "duration", "used", "usedBy", "usedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles containing assigned WiFi promo vouchers."
+    },
+    "/promo_vouchers/{voucherCode}": {
+      "schema": "PromoVoucher",
+      "description": "Available pre-made promo registers."
+    }
+  }
+}

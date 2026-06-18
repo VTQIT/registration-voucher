@@ -1,0 +1,8 @@
+{
+  "name": "Kapten/Lycel WiFi Promo Registration",
+  "description": "Allows users to register an account and atomically receive one free pre-made 12-hour WiFi promo voucher from a secured real-time database.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
