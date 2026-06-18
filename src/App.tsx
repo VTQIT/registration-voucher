@@ -1534,9 +1534,7 @@ export default function App() {
                         Unlock Administrative CMS
                       </button>
                     </div>
-                    <p className="text-[9px] text-center text-slate-400 font-mono">
-                      Hint: PIN is <strong className="text-blue-600 font-bold decoration-dotted border-b border-blue-500/30">833981</strong>
-                    </p>
+                    {/* PIN hint removed as requested */}
                   </form>
                 ) : (
                   /* Full CMS Admin Board Once Authorized */
