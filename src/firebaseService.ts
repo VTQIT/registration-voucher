@@ -359,3 +359,28 @@ export async function addPromoVoucher(code: string, duration: string): Promise<v
   }
 }
 
+/**
+ * Bulk add WiFi voucher codes to Firestore.
+ */
+export async function bulkAddPromoVouchers(vouchers: { code: string, duration: string }[]): Promise<void> {
+  const path = VOUCHERS_COLL;
+  try {
+    const batch = writeBatch(db);
+    for (const v of vouchers) {
+      const cleanCode = v.code.trim().toUpperCase();
+      if (!cleanCode) continue;
+      const docRef = doc(db, VOUCHERS_COLL, cleanCode);
+      batch.set(docRef, {
+        code: cleanCode,
+        duration: v.duration.trim() || "12 Hours",
+        used: false,
+        usedBy: "",
+        usedAt: null,
+      });
+    }
+    await batch.commit();
+  } catch (error: any) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+

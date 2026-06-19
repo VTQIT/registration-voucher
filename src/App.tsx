@@ -48,6 +48,7 @@ import {
   getUserVouchersHistory,
   claimAdditionalWiFiVoucher,
   addPromoVoucher,
+  bulkAddPromoVouchers,
 } from "./firebaseService";
 import { AppUser, PromoVoucher, ViewState } from "./types";
 
@@ -73,6 +74,7 @@ export default function App() {
   const [adminVouchers, setAdminVouchers] = useState<PromoVoucher[]>([]);
   const [adminPanelOpen, setAdminPanelOpen] = useState(false);
   const [isSandboxOperating, setIsSandboxOperating] = useState(false);
+  const [isBulkUploading, setIsBulkUploading] = useState(false);
   const [adminAuthorized, setAdminAuthorized] = useState(() => sessionStorage.getItem("lycel_admin_auth") === "true");
   const [adminPinInput, setAdminPinInput] = useState("");
   const [newVoucherCode, setNewVoucherCode] = useState("");
@@ -545,6 +547,54 @@ export default function App() {
     sessionStorage.removeItem("lycel_admin_auth");
     setAdminAuthorized(false);
     showNotification("CMS Admin panel locked.", "info");
+  };
+
+
+  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files ? e.target.files[0] : null;
+    if (!file) return;
+
+    if (currentUser?.email !== "lycelclanaja@gmail.com") {
+      showNotification("Access denied. Admin email required.", "error");
+      return;
+    }
+
+    setIsBulkUploading(true);
+    showNotification("Processing bulk upload...", "info");
+
+    const reader = new FileReader();
+    reader.onload = async (event: any) => {
+      const text = event.target.result;
+      const lines = text.split("\n");
+      const vouchers: { code: string, duration: string }[] = [];
+      
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const [code, duration] = line.split(",");
+        if (code && code.trim()) {
+          vouchers.push({ code: code.trim(), duration: (duration || "12 Hours").trim() });
+        }
+      }
+
+      if (vouchers.length === 0) {
+        showNotification("No vouchers found in file.", "error");
+        setIsBulkUploading(false);
+        return;
+      }
+
+      try {
+        await bulkAddPromoVouchers(vouchers);
+        await fetchAdminVouchers();
+        showNotification(`Successfully uploaded ${vouchers.length} vouchers!`, "success");
+      } catch (err: any) {
+        console.error(err);
+        showNotification("Failed to bulk upload vouchers.", "error");
+      } finally {
+        setIsBulkUploading(false);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ""; // Reset input
   };
 
   const handleManualAddVoucher = async (e: FormEvent) => {
@@ -1769,6 +1819,26 @@ export default function App() {
                           {isSandboxOperating ? "Adding Voucher..." : "Add Voucher to Pool"}
                         </button>
                       </form>
+                    </div>
+
+                    {/* Bulk Upload Section */}
+                    <div className="p-3.5 rounded-2xl border border-white/50 bg-white/40 space-y-2.5 shadow-sm">
+                      <h4 className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Database className="w-4 h-4 text-emerald-600" />
+                        Bulk Voucher Upload
+                      </h4>
+                      <label className="block text-[9px] font-bold text-slate-500 uppercase mb-0.5">Upload CSV (code,duration)</label>
+                      <input
+                        type="file"
+                        accept=".csv"
+                        onChange={handleBulkUpload}
+                        disabled={isBulkUploading}
+                        className="w-full px-2.5 py-1.5 text-xs text-slate-600 bg-white border border-slate-300 rounded-xl cursor-pointer file:mr-2 file:py-1 file:px-2 file:rounded-lg file:border-0 file:text-[10px] file:font-semibold file:bg-emerald-100 file:text-emerald-700 hover:file:bg-emerald-200"
+                        id="bulk_voucher_upload"
+                      />
+                      {isBulkUploading && (
+                        <div className="text-[10px] text-emerald-700 font-bold animate-pulse">Uploading and processing...</div>
+                      )}
                     </div>
 
                     {/* Real-time Voucher Registry table */}
