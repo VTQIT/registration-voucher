@@ -522,6 +522,13 @@ export default function App() {
 
   const handleAdminPinSubmit = (e: FormEvent) => {
     e.preventDefault();
+
+    if (currentUser?.email !== "lycelclanaja@gmail.com") {
+      showNotification("Access denied. Admin email required.", "error");
+      setAdminPinInput("");
+      return;
+    }
+
     if (adminPinInput.trim() === "833981") {
       sessionStorage.setItem("lycel_admin_auth", "true");
       setAdminAuthorized(true);
@@ -1605,14 +1612,16 @@ export default function App() {
               <Database className="w-3.5 h-3.5 text-blue-600" />
               WiFi CMS Admin Portal
             </span>
-            <button
-              onClick={() => setAdminPanelOpen(!adminPanelOpen)}
-              className="px-2.5 py-1 rounded-xl bg-white/40 border border-white/50 text-[10px] font-mono hover:bg-white text-blue-600 font-semibold flex items-center gap-1 transition cursor-pointer shadow-sm active:scale-95"
-              id="btn_toggle_sandbox_panel"
-            >
-              <Layers className="w-3 h-3" />
-              {adminPanelOpen ? "Close Admin CMS" : "Open Admin CMS"}
-            </button>
+            {currentUser?.email === "lycelclanaja@gmail.com" && (
+              <button
+                onClick={() => setAdminPanelOpen(!adminPanelOpen)}
+                className="px-2.5 py-1 rounded-xl bg-white/40 border border-white/50 text-[10px] font-mono hover:bg-white text-blue-600 font-semibold flex items-center gap-1 transition cursor-pointer shadow-sm active:scale-95"
+                id="btn_toggle_sandbox_panel"
+              >
+                <Layers className="w-3 h-3" />
+                {adminPanelOpen ? "Close Admin CMS" : "Open Admin CMS"}
+              </button>
+            )}
           </div>
 
           {/* Collapsible Panel content */}
