@@ -5,6 +5,7 @@ import {
   signOut,
   onAuthStateChanged,
   User,
+  sendPasswordResetEmail,
 } from "firebase/auth";
 import {
   Wifi,
@@ -66,6 +67,7 @@ export default function App() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
 
   // Administrative / Sandbox Panel States
   const [adminVouchers, setAdminVouchers] = useState<PromoVoucher[]>([]);
@@ -205,9 +207,13 @@ export default function App() {
 
   // Fetch administrator voucher table
   const fetchAdminVouchers = async () => {
+    if (!currentUser || currentUser.email !== "lycelclanaja@gmail.com") {
+      setAdminVouchers([]);
+      return;
+    }
     try {
       const list = await getAllVouchersForAdmin();
-      setAdminVouchers(list);
+      setAdminVouchers(list || []);
     } catch (e) {
       console.warn("Could not list vouchers on sandbox panel: ", e);
     }
@@ -215,10 +221,10 @@ export default function App() {
 
   // Refresh admin state automatically or manually
   useEffect(() => {
-    if (adminPanelOpen) {
+    if (adminPanelOpen && adminAuthorized && currentUser?.email === "lycelclanaja@gmail.com") {
       fetchAdminVouchers();
     }
-  }, [adminPanelOpen]);
+  }, [adminPanelOpen, adminAuthorized, currentUser]);
 
   // Copy code to clipboard
   const handleCopyVoucherCode = async () => {
@@ -417,6 +423,36 @@ export default function App() {
     }
   };
 
+  // 3.5 Reset Password Handler
+  const handleForgotPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = email.trim();
+    if (!cleanEmail) {
+      showNotification("Please provide your email address.", "error");
+      return;
+    }
+
+    setIsSendingReset(true);
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail);
+      showNotification("Reset link sent! Please check your email inbox.", "success");
+      setView("login");
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      if (error.code === "auth/user-not-found") {
+        showNotification("No account found with this email. Please sign up.", "error");
+      } else if (error.code === "auth/invalid-email") {
+        showNotification("Invalid email address format.", "error");
+      } else if (error.code === "auth/missing-email") {
+        showNotification("Missing email address.", "error");
+      } else {
+        showNotification(error.message || "Failed to send reset email.", "error");
+      }
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
   // 4. Logout Action
   const handleLogout = async () => {
     setView("loading");
@@ -435,6 +471,10 @@ export default function App() {
 
   // 5. Developer Sandbox Helpers
   const handleSeedDatabase = async () => {
+    if (!currentUser || currentUser.email !== "lycelclanaja@gmail.com") {
+      showNotification("Administrator account required. Please register and sign in as lycelclanaja@gmail.com to seed the database.", "error");
+      return;
+    }
     setIsSandboxOperating(true);
     showNotification("Seeding FREE001 - FREE005 to Firestore...", "info");
     try {
@@ -456,6 +496,10 @@ export default function App() {
   };
 
   const handleResetDatabase = async () => {
+    if (!currentUser || currentUser.email !== "lycelclanaja@gmail.com") {
+      showNotification("Administrator account required. Please register and sign in as lycelclanaja@gmail.com to reset.", "error");
+      return;
+    }
     setIsSandboxOperating(true);
     showNotification("Wiping redemptions & purging accounts...", "info");
     try {
@@ -498,6 +542,10 @@ export default function App() {
 
   const handleManualAddVoucher = async (e: FormEvent) => {
     e.preventDefault();
+    if (!currentUser || currentUser.email !== "lycelclanaja@gmail.com") {
+      showNotification("Administrator account required. Please register and sign in as lycelclanaja@gmail.com first.", "error");
+      return;
+    }
     const cleanCode = newVoucherCode.trim().toUpperCase();
     if (!cleanCode) {
       showNotification("Please enter a valid voucher code.", "error");
@@ -694,7 +742,21 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <label htmlFor="login_password" className="text-xs font-bold text-slate-500 tracking-wide uppercase">Password</label>
+                  <div className="flex justify-between items-center">
+                    <label htmlFor="login_password" className="text-xs font-bold text-slate-500 tracking-wide uppercase">Password</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setView("forgot_password");
+                        setHasAuthNotAllowedError(false);
+                        setHasAuthConfigError(false);
+                      }}
+                      className="text-xs text-blue-650 hover:text-blue-800 hover:underline font-bold transition outline-none"
+                      id="link_forgot_password"
+                    >
+                      Forgot?
+                    </button>
+                  </div>
                   <div className="relative">
                     <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
                     <input
@@ -874,6 +936,71 @@ export default function App() {
                     }}
                     className="text-blue-600 hover:text-blue-800 hover:underline font-bold transition"
                     id="link_go_login"
+                  >
+                    Back to Login
+                  </button>
+                </p>
+              </div>
+            </motion.div>
+          )}
+          
+          {/* 3.1 VIEW: FORGOT PASSWORD PAGE */}
+          {view === "forgot_password" && (
+            <motion.div
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4 }}
+              className="backdrop-blur-xl bg-white/45 border border-white/40 p-6 rounded-3xl shadow-2xl space-y-6"
+              id="forgot_password_card"
+            >
+              <div className="text-center space-y-2">
+                <h2 className="text-2xl font-extrabold tracking-tight text-slate-800">Recover Account</h2>
+                <p className="text-sm text-slate-500">Provide your account email address. We will email you a secure link to reset your password.</p>
+              </div>
+
+              <form onSubmit={handleForgotPassword} className="space-y-5" id="forgot_password_form">
+                <div className="space-y-1.5">
+                  <label htmlFor="reset_email" className="text-xs font-bold text-slate-500 tracking-wide uppercase">Email Address</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400" />
+                    <input
+                      id="reset_email"
+                      type="email"
+                      placeholder="e.g. name@domain.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className="w-full pl-11 pr-4 py-3 bg-white/40 border border-white/45 focus:bg-white/70 focus:border-blue-500 rounded-xl focus:ring-1 focus:ring-blue-500 text-sm placeholder-slate-400 outline-none text-slate-800 transition-all font-mono shadow-inner-sm"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  id="btn_send_reset"
+                  type="submit"
+                  disabled={isSendingReset}
+                  className="w-full py-3.5 bg-slate-900 hover:bg-slate-850 active:scale-[0.98] disabled:bg-slate-400 disabled:cursor-not-allowed text-white font-bold rounded-2xl text-sm shadow-md cursor-pointer transition-all flex items-center justify-center gap-2"
+                >
+                  {isSendingReset ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      Sending Recovery Email...
+                    </>
+                  ) : (
+                    "Send Password Reset Email"
+                  )}
+                </button>
+              </form>
+
+              <div className="pt-2 border-t border-slate-200 text-center">
+                <p className="text-sm text-slate-500 font-medium font-sans">
+                  Ready to Sign In?{" "}
+                  <button
+                    onClick={() => {
+                      setView("login");
+                    }}
+                    className="text-blue-600 hover:text-blue-800 hover:underline font-bold transition"
+                    id="link_back_to_login"
                   >
                     Back to Login
                   </button>
@@ -1550,6 +1677,18 @@ export default function App() {
                         Lock Console
                       </button>
                     </div>
+
+                    {(!currentUser || currentUser.email !== "lycelclanaja@gmail.com") && (
+                      <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-slate-800 text-[11px] leading-relaxed space-y-1.5 shadow-sm">
+                        <div className="flex items-center gap-1.5 font-bold text-amber-800">
+                          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                          Firebase Credentials Check
+                        </div>
+                        <p className="text-slate-700">
+                          To seed or add new vouchers, Firestore security rules require that you create an account and sign up or log in as the verified administrator (<strong>lycelclanaja@gmail.com</strong>). Please authenticate above before performing database CMS actions.
+                        </p>
+                      </div>
+                    )}
 
                     {/* Manual Voucher Addition Section */}
                     <div className="p-3.5 rounded-2xl border border-white/50 bg-white/40 space-y-2.5 shadow-sm">

@@ -22,7 +22,7 @@ service cloud.firestore {
 
     // --- USERS SECTION ---
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
+      allow get: if isSignedIn();
       allow create: if isOwner(userId) 
                     && request.resource.data.uid == userId
                     && request.resource.data.email == request.auth.token.email
@@ -38,11 +38,7 @@ service cloud.firestore {
     // --- PROMO VOUCHERS SECTION ---
     match /promo_vouchers/{voucherCode} {
       allow get: if true;
-      allow list: if isSignedIn() && (
-        resource.data.used == false || 
-        resource.data.usedBy == request.auth.token.email || 
-        isAdmin()
-      );
+      allow list: if isSignedIn();
       allow create: if isAdmin();
       allow update: if isAdmin() || (
         isSignedIn() 

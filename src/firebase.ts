@@ -19,18 +19,6 @@ const databaseId = (firebaseConfig as any).firestoreDatabaseId;
 export const db = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 export const auth = getAuth(app);
 
-// Test Firestore database connection
-async function testConnection() {
-  try {
-    await getDocFromServer(doc(db, "test", "connection"));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("the client is offline")) {
-      console.warn("Firebase client reports as offline. Check your network or Firebase configuration.");
-    }
-  }
-}
-testConnection();
-
 // Error translation according to system-skills
 export enum OperationType {
   CREATE = "create",

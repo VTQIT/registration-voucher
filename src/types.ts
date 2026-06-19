@@ -19,4 +19,4 @@ export interface PromoVoucher {
   } | Date | null;
 }
 
-export type ViewState = "login" | "register" | "dashboard" | "loading";
+export type ViewState = "login" | "register" | "dashboard" | "loading" | "forgot_password";
